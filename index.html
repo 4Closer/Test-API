@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Simple Save API Chat</title>
+<style>
+  :root{--bg:#f6f8fa;--card:#fff;--accent:#0b8a55}
+  body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#111}
+  .wrap{max-width:720px;margin:28px auto;padding:18px}
+  .card{background:var(--card);border-radius:10px;padding:12px;box-shadow:0 6px 18px rgba(0,0,0,.06)}
+  .messages{height:320px;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .msg{max-width:74%;padding:10px 12px;border-radius:12px}
+  .msg.me{align-self:flex-end;background:#dcf8c6}
+  .msg.bot{align-self:flex-start;background:#fff;border:1px solid #eee}
+  .composer{display:flex;gap:8px;margin-top:12px}
+  .composer input{flex:1;padding:10px;border-radius:999px;border:1px solid #ddd}
+  .btn{background:var(--accent);color:#fff;border:none;padding:10px 14px;border-radius:10px;cursor:pointer}
+  .meta{font-size:12px;color:#666;margin-top:6px}
+  .small{font-size:13px;color:#666}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" role="application" aria-label="Simpan Kalimat">
+    <h3>Simpan Kalimat</h3>
+    <div class="small">Ketik kalimat lalu klik Simpan. Data disimpan di API lokal.</div>
+
+    <div id="messages" class="messages" aria-live="polite"></div>
+
+    <div class="composer">
+      <input id="input" type="text" placeholder="Tulis kalimat..." aria-label="Tulis kalimat" />
+      <button id="send" class="btn">Simpan</button>
+    </div>
+
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button id="refresh" class="btn" style="background:#2f80ed">Muat Ulang</button>
+      <button id="clear" class="btn" style="background:#e04b4b">Hapus Semua</button>
+    </div>
+
+    <div class="meta" id="status"></div>
+  </div>
+</div>
+
+<script>
+const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ?
+  `${location.protocol}//${location.hostname}:3000/api/messages` : '/api/messages';
+
+const input = document.getElementById('input');
+const send = document.getElementById('send');
+const messagesEl = document.getElementById('messages');
+const statusEl = document.getElementById('status');
+const refresh = document.getElementById('refresh');
+const clearBtn = document.getElementById('clear');
+
+function setStatus(t){ statusEl.textContent = t || ''; }
+
+function renderMessages(list){
+  messagesEl.innerHTML = '';
+  if(!Array.isArray(list) || list.length === 0){
+    messagesEl.innerHTML = '<div class="small">Belum ada kalimat tersimpan.</div>';
+    return;
+  }
+  list.forEach(it=>{
+    const el = document.createElement('div');
+    el.className = 'msg bot';
+    el.textContent = it.text;
+    messagesEl.appendChild(el);
+  });
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+async function loadMessages(){
+  setStatus('Memuat...');
+  try{
+    const res = await fetch(API);
+    if(!res.ok) throw new Error('Gagal mengambil');
+    const data = await res.json();
+    renderMessages(data.messages || []);
+    setStatus('Selesai memuat');
+  }catch(err){
+    setStatus('Error: ' + err.message);
+    renderMessages([]);
+  }
+}
+
+async function saveMessage(text){
+  setStatus('Menyimpan...');
+  try{
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text})
+    });
+    if(!res.ok){
+      const payload = await res.json().catch(()=>({}));
+      throw new Error(payload.error || res.statusText);
+    }
+    const payload = await res.json();
+    setStatus('Tersimpan');
+    await loadMessages();
+    return payload;
+  }catch(err){
+    setStatus('Error: ' + err.message);
+    throw err;
+  }
+}
+
+send.addEventListener('click', async ()=>{
+  const txt = input.value.trim();
+  if(!txt) return;
+  try{
+    await saveMessage(txt);
+    input.value = '';
+    input.focus();
+  }catch(e){
+    console.error(e);
+  }
+});
+
+refresh.addEventListener('click', loadMessages);
+
+clearBtn.addEventListener('click', async ()=>{
+  if(!confirm('Hapus semua pesan?')) return;
+  try{
+    const res = await fetch(API, {method:'DELETE'});
+    if(!res.ok) throw new Error('Gagal hapus');
+    setStatus('Semua dihapus');
+    loadMessages();
+  }catch(e){
+    setStatus('Error: ' + e.message);
+  }
+});
+
+// enter to send
+input.addEventListener('keydown', e=>{
+  if(e.key === 'Enter') send.click();
+});
+
+// initial load
+loadMessages();
+</script>
+</body>
+</html>
